@@ -16,6 +16,10 @@ REALITY_SNI=""
 NAIVE_USER="user"
 NAIVE_PASS=""
 H3_PORT="8443"
+H3_MODE="tls"
+H3_REALITY_TARGET=""
+H3_REALITY_SNI=""
+H3_SHORT_ID="0123456789abcdef"
 FRONTEND_PORT="443"
 DEPLOY_REALITY="no"
 DEPLOY_H3="no"
@@ -32,9 +36,13 @@ Options:
   --user <user>             naive auth username (default: user)
   --pass <pass>             naive auth password (default: random)
   --h3-port <port>          h3frontend UDP port (default: 8443)
+  --h3-mode <tls|reality>   h3frontend transport mode (default: tls)
+  --h3-reality-target <host> h3frontend REALITY dest (probe relay target)
+  --h3-reality-sni <host>   h3frontend REALITY SNI (default: target)
+  --h3-short-id <hex>       h3frontend REALITY short id (default: 0123456789abcdef)
   --frontend-port <port>    REALITY frontend TCP port (default: 443)
   --with-reality            deploy REALITY frontend
-  --with-h3                 deploy H3 frontend (requires --domain)
+  --with-h3                 deploy H3 frontend (--h3-mode reality needs --h3-reality-target)
 USAGE
 }
 
@@ -48,6 +56,10 @@ parse_args() {
       --user) NAIVE_USER="$2"; shift 2;;
       --pass) NAIVE_PASS="$2"; shift 2;;
       --h3-port) H3_PORT="$2"; shift 2;;
+      --h3-mode) H3_MODE="$2"; DEPLOY_H3="yes"; shift 2;;
+      --h3-reality-target) H3_REALITY_TARGET="$2"; DEPLOY_H3="yes"; shift 2;;
+      --h3-reality-sni) H3_REALITY_SNI="$2"; shift 2;;
+      --h3-short-id) H3_SHORT_ID="$2"; shift 2;;
       --frontend-port) FRONTEND_PORT="$2"; shift 2;;
       --with-reality) DEPLOY_REALITY="yes"; shift;;
       --with-h3) DEPLOY_H3="yes"; shift;;
@@ -56,6 +68,16 @@ parse_args() {
     esac
   done
   if [[ -z "$NAIVE_PASS" ]]; then NAIVE_PASS="$(openssl rand -hex 8)"; fi
+  if [[ "$H3_MODE" != "tls" && "$H3_MODE" != "reality" ]]; then
+    echo "invalid --h3-mode: $H3_MODE (want tls or reality)" >&2
+    exit 1
+  fi
+  if [[ "$H3_MODE" == "reality" && -z "$H3_REALITY_TARGET" ]]; then
+    H3_REALITY_TARGET="${REALITY_TARGET:-www.microsoft.com}"
+  fi
+  if [[ -z "$H3_REALITY_SNI" && -n "$H3_REALITY_TARGET" ]]; then
+    H3_REALITY_SNI="${H3_REALITY_TARGET%%:*}"
+  fi
 }
 
 interactive() {
@@ -88,10 +110,22 @@ interactive() {
   if [[ "$input" =~ ^[Yy]$ ]]; then DEPLOY_H3="yes"; fi
 
   if [[ "$DEPLOY_H3" == "yes" ]]; then
-    while [[ -z "$DOMAIN" ]]; do
-      read -r -p "H3 域名 (必须填写，用于 TLS 证书): " input
-      DOMAIN="${input}"
-    done
+    read -r -p "H3 模式 tls/reality (默认 tls): " input
+    H3_MODE="${input:-tls}"
+    if [[ "$H3_MODE" == "reality" ]]; then
+      read -r -p "H3 REALITY 目标域名 (默认 www.microsoft.com): " input
+      H3_REALITY_TARGET="${input:-www.microsoft.com}"
+      H3_REALITY_SNI="${H3_REALITY_TARGET%%:*}"
+      read -r -p "H3 REALITY SNI (默认同目标域名): " input
+      [[ -n "$input" ]] && H3_REALITY_SNI="${input}"
+      read -r -p "H3 REALITY short id (默认 0123456789abcdef): " input
+      [[ -n "$input" ]] && H3_SHORT_ID="${input}"
+    else
+      while [[ -z "$DOMAIN" ]]; do
+        read -r -p "H3 域名 (必须填写，用于 TLS 证书): " input
+        DOMAIN="${input}"
+      done
+    fi
     read -r -p "H3 UDP 端口 (默认 8443): " input
     H3_PORT="${input:-8443}"
   fi
@@ -105,7 +139,7 @@ install_deps() {
   command -v tar >/dev/null || need+=(tar)
   command -v unzip >/dev/null || need+=(unzip)
   command -v openssl >/dev/null || need+=(openssl)
-  if [[ "$DEPLOY_H3" == "yes" ]] && ! command -v certbot >/dev/null; then
+  if [[ "$DEPLOY_H3" == "yes" && "$H3_MODE" == "tls" ]] && ! command -v certbot >/dev/null; then
     need+=(certbot)
   fi
   if [[ ${#need[@]} -gt 0 ]]; then
@@ -235,14 +269,59 @@ UNIT
 }
 
 write_h3_service() {
-  CERT="/etc/letsencrypt/live/${DOMAIN}/fullchain.pem"
-  KEY="/etc/letsencrypt/live/${DOMAIN}/privkey.pem"
-  if [[ ! -f "$CERT" || ! -f "$KEY" ]]; then
-    echo "为 ${DOMAIN} 申请 Let's Encrypt 证书..."
-    certbot certonly --standalone --preferred-challenges http -d "$DOMAIN" --non-interactive --agree-tos --register-unsafely-without-email
-  fi
+  local h3_public_key=""
+  if [[ "$H3_MODE" == "reality" ]]; then
+    local keys priv pub
+    keys="$("${BIN_DIR}/h3frontend" genkey)"
+    priv="$(printf '%s\n' "$keys" | awk '$1 == "Private" && $2 == "key:" { print $3; exit }')"
+    pub="$(printf '%s\n' "$keys" | awk '$1 == "Public" && $2 == "key:" { print $3; exit }')"
+    if [[ -z "$priv" || -z "$pub" ]]; then
+      echo "h3frontend genkey 失败" >&2
+      exit 1
+    fi
+    h3_public_key="$pub"
 
-  cat > "${CONFIG_DIR}/h3frontend.toml" <<EOF
+    cat > "${CONFIG_DIR}/h3frontend.toml" <<EOF
+log_level = "info"
+listen = "0.0.0.0:${H3_PORT}"
+mode = "reality"
+
+[reality]
+private_key = "${priv}"
+short_ids = ["${H3_SHORT_ID}"]
+server_names = ["${H3_REALITY_SNI}"]
+dest = "${H3_REALITY_TARGET}"
+dest_server_name = "${H3_REALITY_SNI}"
+fallback_timeout = "120s"
+
+[quic]
+initPacketSize = 1200
+initStreamReceiveWindow = 8388608
+maxStreamReceiveWindow = 8388608
+initConnReceiveWindow = 20971520
+maxConnReceiveWindow = 20971520
+maxIdleTimeout = "30s"
+maxIncomingStreams = 1024
+disablePathMTUDiscovery = true
+disableGSO = true
+disablePathManager = true
+
+[congestion]
+type = "bbr"
+bbrProfile = "aggressive"
+
+[upstream]
+addr = "127.0.0.1:18080"
+EOF
+  else
+    CERT="/etc/letsencrypt/live/${DOMAIN}/fullchain.pem"
+    KEY="/etc/letsencrypt/live/${DOMAIN}/privkey.pem"
+    if [[ ! -f "$CERT" || ! -f "$KEY" ]]; then
+      echo "为 ${DOMAIN} 申请 Let's Encrypt 证书..."
+      certbot certonly --standalone --preferred-challenges http -d "$DOMAIN" --non-interactive --agree-tos --register-unsafely-without-email
+    fi
+
+    cat > "${CONFIG_DIR}/h3frontend.toml" <<EOF
 log_level = "info"
 listen = "0.0.0.0:${H3_PORT}"
 
@@ -269,6 +348,7 @@ bbrProfile = "aggressive"
 [upstream]
 addr = "127.0.0.1:18080"
 EOF
+  fi
 
   cat > "${SYSTEMD_DIR}/naivereal-h3frontend.service" <<UNIT
 [Unit]
@@ -291,6 +371,10 @@ UNIT
 
   systemctl daemon-reload
   systemctl enable --now naivereal-h3frontend.service
+  if [[ "$H3_MODE" == "reality" ]]; then
+    echo "H3 REALITY public key: ${h3_public_key}"
+    echo "H3 REALITY short id: ${H3_SHORT_ID}"
+  fi
 }
 
 write_manager() {
@@ -411,7 +495,13 @@ main() {
     echo "REALITY 前端已启用"
   fi
   if [[ "$DEPLOY_H3" == "yes" ]]; then
-    echo "H3 客户端: quic://${NAIVE_USER}:${NAIVE_PASS}@${DOMAIN}:${H3_PORT}"
+    if [[ "$H3_MODE" == "reality" ]]; then
+      echo "H3 REALITY 已启用 (public key/short id 见上方输出)"
+      echo "H3 客户端(补丁内核): quic://${NAIVE_USER}:${NAIVE_PASS}@<服务器IP>:${H3_PORT} + reality 块"
+      echo "  或 TUI 导入: naivereal+quic://${NAIVE_USER}:${NAIVE_PASS}@<服务器IP>:${H3_PORT}?server_name=${H3_REALITY_SNI}&short_id=${H3_SHORT_ID}"
+    else
+      echo "H3 客户端: quic://${NAIVE_USER}:${NAIVE_PASS}@${DOMAIN}:${H3_PORT}"
+    fi
   fi
   echo "============================================="
 }
