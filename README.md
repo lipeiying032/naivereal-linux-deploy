@@ -62,12 +62,15 @@ sudo bash install.sh \
 安装完成后会生成 `naivereal` 命令：
 
 ```bash
-naivereal status      # 查看服务状态
-naivereal restart     # 重启所有服务
-naivereal stop        # 停止所有服务
-naivereal start       # 启动所有服务
-naivereal info        # 查看配置/节点信息
-naivereal update      # 显示更新命令
+naivereal status          # 查看服务状态
+naivereal restart         # 重启所有服务
+naivereal stop            # 停止所有服务
+naivereal start           # 启动所有服务
+naivereal info            # 查看配置/节点信息
+naivereal remove-kernel   # 删除 naive 内核及相关 systemd 服务
+naivereal remove-script   # 删除 naivereal 管理命令本身
+naivereal uninstall       # 卸载全部 naivereal 组件
+naivereal update          # 显示更新命令
 ```
 
 ## 生成内容

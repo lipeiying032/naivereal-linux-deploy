@@ -334,12 +334,39 @@ case "${1:-}" in
       echo
     fi
     ;;
+  remove-kernel)
+    echo "删除 naive 内核..."
+    systemctl stop naivereal-server.service 2>/dev/null || true
+    systemctl disable naivereal-server.service 2>/dev/null || true
+    rm -f /etc/systemd/system/naivereal-server.service
+    rm -f "$BIN_DIR/naive"
+    systemctl daemon-reload
+    echo "已删除 naive 内核和相关 systemd 服务。"
+    ;;
+  remove-script)
+    echo "删除 naivereal 管理命令..."
+    rm -f /usr/local/bin/naivereal
+    echo "已删除 /usr/local/bin/naivereal。"
+    ;;
+  uninstall)
+    echo "卸载全部 naivereal 组件..."
+    systemctl stop naivereal-h3frontend.service naivereal-frontend.service naivereal-server.service 2>/dev/null || true
+    systemctl disable naivereal-h3frontend.service naivereal-frontend.service naivereal-server.service 2>/dev/null || true
+    rm -f /etc/systemd/system/naivereal-h3frontend.service
+    rm -f /etc/systemd/system/naivereal-frontend.service
+    rm -f /etc/systemd/system/naivereal-server.service
+    rm -rf "$BIN_DIR"
+    rm -rf "$CONFIG_DIR"
+    rm -f /usr/local/bin/naivereal
+    systemctl daemon-reload
+    echo "已卸载全部 naivereal 组件。"
+    ;;
   update)
     echo "更新命令："
-    echo "  sudo bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/lipeiying032/naivereal-linux-deploy/master/bootstrap.sh)\" --version latest"
+    echo "  sudo bash -c "\$(curl -fsSL https://raw.githubusercontent.com/lipeiying032/naivereal-linux-deploy/master/bootstrap.sh)" --version latest"
     ;;
   *)
-    echo "用法: naivereal {status|start|stop|restart|info|update}"
+    echo "用法: naivereal {status|start|stop|restart|info|remove-kernel|remove-script|uninstall|update}"
     exit 1
     ;;
 esac
