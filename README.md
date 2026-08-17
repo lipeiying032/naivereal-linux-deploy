@@ -8,6 +8,27 @@ Linux 服务端一键部署脚本，用于部署 [naivereal](https://github.com/
 
 ## 使用方法
 
+### 方式一：curl 一键拉取并执行（推荐，不需要 git）
+
+```bash
+sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/lipeiying032/naivereal-linux-deploy/master/bootstrap.sh)" \
+  --domain your.domain.com \
+  --reality-target www.microsoft.com \
+  --reality-sni www.microsoft.com
+```
+
+或者使用仓库里的 `bootstrap.sh`：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/lipeiying032/naivereal-linux-deploy/master/bootstrap.sh -o /tmp/naivereal-bootstrap.sh
+sudo bash /tmp/naivereal-bootstrap.sh \
+  --domain your.domain.com \
+  --reality-target www.microsoft.com \
+  --reality-sni www.microsoft.com
+```
+
+### 方式二：clone 后本地执行
+
 ```bash
 sudo bash install.sh \
   --domain your.domain.com \
