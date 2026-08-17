@@ -10,6 +10,14 @@ Linux 服务端一键部署脚本，用于部署 [naivereal](https://github.com/
 
 ### 方式一：curl 一键拉取并执行（推荐，不需要 git）
 
+直接运行会进入**交互式引导部署**，新手直接回车即可使用默认配置：
+
+```bash
+sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/lipeiying032/naivereal-linux-deploy/master/bootstrap.sh)"
+```
+
+如果想自定义，可以在提示后输入参数再回车；也可以用命令行参数直接指定：
+
 ```bash
 sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/lipeiying032/naivereal-linux-deploy/master/bootstrap.sh)" \
   --domain your.domain.com \
@@ -48,6 +56,19 @@ sudo bash install.sh \
 | `--pass` | 随机生成 | naive 后端认证密码 |
 | `--h3-port` | `8443` | h3frontend UDP 监听端口 |
 | `--frontend-port` | `443` | REALITY 前端监听端口 |
+
+## 安装后的管理命令
+
+安装完成后会生成 `naivereal` 命令：
+
+```bash
+naivereal status      # 查看服务状态
+naivereal restart     # 重启所有服务
+naivereal stop        # 停止所有服务
+naivereal start       # 启动所有服务
+naivereal info        # 查看配置/节点信息
+naivereal update      # 显示更新命令
+```
 
 ## 生成内容
 
