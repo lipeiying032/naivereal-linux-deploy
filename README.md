@@ -55,6 +55,10 @@ sudo bash install.sh \
 | `--user` | `user` | naive 后端认证用户名 |
 | `--pass` | 随机生成 | naive 后端认证密码 |
 | `--h3-port` | `8443` | h3frontend UDP 监听端口 |
+| `--h3-mode` | `tls` | h3frontend 模式：`tls`（Let's Encrypt 证书）或 `reality`（REALITY-over-QUIC，无需证书） |
+| `--h3-reality-target` | 同 `--reality-target` | H3 REALITY 回落目标（UDP 探测中继目标） |
+| `--h3-reality-sni` | 同 target | H3 REALITY SNI |
+| `--h3-short-id` | `0123456789abcdef` | H3 REALITY short id |
 | `--frontend-port` | `443` | REALITY 前端监听端口 |
 
 ## 安装后的管理命令
